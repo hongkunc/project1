@@ -390,6 +390,10 @@ int write_file(char content, int count, int descriptor_index,Ldisk *ldisk, OpenF
                     int new_block_index = allocate_new_data_block(ldisk, mask, ofts->index);
                     ldisk->read_block(new_block_index, ofts->rw_buffer);
                     buffer_position = 0;
+                }else{
+                    data_block_index = get_data_block_index(ldisk, ofts->index, (ofts->position/64+1));
+                    ldisk->read_block(data_block_index, ofts->rw_buffer);
+                    buffer_position = 0;
                 }
             }
             
@@ -420,6 +424,45 @@ int write_file(char content, int count, int descriptor_index,Ldisk *ldisk, OpenF
         }
         
         
+    }
+    
+    return status;
+}
+
+int read_file(int descriptor_index, int count, Ldisk *ldisk, OpenFileTable *ofts, char *read_buffer){
+    int status = -1;
+    int progress = 0;
+    int old_position = ofts->position;
+    
+    
+    if(progress < count){
+        int buffer_position = position_to_buffer_position(ofts->position);
+        for(int i=0; i<count; i++){
+            
+            //fetch next block
+            if(buffer_position >=64){
+                int data_block_index = get_data_block_index(ldisk, ofts->index, (ofts->position-1)/64+1);
+                ldisk->write_block(data_block_index, ofts->rw_buffer);
+                if(get_data_block_index(ldisk, ofts->index, ofts->position/64+1) == 0)
+                    return progress;
+                else{
+                    data_block_index = get_data_block_index(ldisk, ofts->index, ofts->position/64+1);
+                    ldisk->read_block(data_block_index, ofts->rw_buffer);
+                    buffer_position = 0;
+                }
+            }
+            
+            read_buffer[progress] = ofts->rw_buffer[buffer_position];
+            buffer_position++;
+            progress++;
+            
+            if(ofts->position != 191)
+                ofts->position++;
+            
+            if(progress == count){
+                return progress;
+            }
+        }
     }
     
     return status;
@@ -509,5 +552,10 @@ int main(int argc, const char * argv[]) {
     write_file('x', 50, ofts[1].index, &test_ldisk, &ofts[1], mask);
     write_file('y',140,ofts[1].index,&test_ldisk,&ofts[1], mask);
     
+    char read_buffer[192];
+    seek_position(&test_ldisk, &ofts[1], 45);
+    write_file('a', 30, ofts[1].index, &test_ldisk, &ofts[1], mask);
+    seek_position(&test_ldisk, &ofts[1], 40);
+    read_file(ofts[1].index, 50 , &test_ldisk, &ofts[1], read_buffer);
     return 0;
 }
