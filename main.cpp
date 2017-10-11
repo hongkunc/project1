@@ -626,5 +626,10 @@ int main(int argc, const char * argv[]) {
     destory_file("qwe",&test_ldisk,&test_dir,&ofts[0],mask2);
     std::cout << find_zero_bitmap(&test_ldisk, mask) << std::endl;
     
+    char read_buffer[192];
+    seek_position(&test_ldisk, &ofts[1], 45);
+    write_file('a', 30, ofts[1].index, &test_ldisk, &ofts[1], mask);
+    seek_position(&test_ldisk, &ofts[1], 40);
+    read_file(ofts[1].index, 50 , &test_ldisk, &ofts[1], read_buffer);
     return 0;
 }
