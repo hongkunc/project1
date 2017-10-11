@@ -32,7 +32,7 @@ void set_symbolic_name(int position, char *name, int *dir,size_t size){
 int descriptor_index_to_descriptor_block(int descriptor_index){
     int descriptor_block_index = -1;
     
-    int block_number;
+    descriptor_block_index = 1+descriptor_index/4;
     
     return descriptor_block_index;
 }
@@ -66,6 +66,17 @@ void set_block_bitmap(Ldisk *ldisk, long long int* mask,int block_index){
     memcpy(buffer, bitmap, sizeof(bitmap));
     ldisk->write_block(0, buffer);
     
+}
+
+void free_block_bitmap(Ldisk *ldisk, long long int *mask2, int block_index){
+    char buffer[64];
+    ldisk->read_block(0, buffer);
+    long long int bitmap[1];
+    memcpy(&bitmap[0], buffer, sizeof(bitmap));
+    
+    bitmap[0] = bitmap[0]&mask2[block_index];
+    memcpy(buffer, bitmap, sizeof(bitmap));
+    ldisk->write_block(0, buffer);
 }
 
 
@@ -239,8 +250,56 @@ int create_file(char *name, Ldisk *ldisk, Directory* dir, OpenFileTable* ofts){
     return index;
 }
 
-int destory_file(){
-    return -1;
+int destory_file(char *name, Ldisk *ldisk, Directory *dir, OpenFileTable *ofts, long long int *mask2){
+    int status = -1;
+    int descriptor_index = -1;
+    //search in directory
+    int block_list[3];
+    for(int i=0; i<3; i++)
+        block_list[i] = get_data_block_index(ldisk, 0, i+1);
+    
+    for(int i=0; i<3; i++){
+        if(block_list[i] != 0){
+            ldisk->read_block(block_list[i], ofts->rw_buffer);
+            dir->get_dir_from_ofts(ofts->rw_buffer);
+            int dir_index = dir->find_file(name);
+            if(dir_index != -1){
+                std::cout << "Find file in directory" << std::endl;
+                descriptor_index = dir->directory[2*dir_index+1];
+                dir->directory[2*dir_index+1] = 0;
+                memcpy(ofts->rw_buffer, dir->directory, sizeof(dir->directory));
+                ldisk->write_block(block_list[i], ofts->rw_buffer);
+                break;
+            }
+        }
+    }
+    
+    //no such file and return -1 to indicate error
+    if(descriptor_index == -1)
+        return -1;
+    
+    for(int i=0; i<3; i++)
+        block_list[i] = get_data_block_index(ldisk, descriptor_index, i+1);
+    
+    //free descriptor
+    int buffer[16];
+    ldisk->read_block(descriptor_index_to_descriptor_block(descriptor_index), (char *)buffer);
+    buffer[4*(descriptor_index%4)+0] = 0;   //set length to 0
+    buffer[4*(descriptor_index%4)+1] = 0;   //set all data block to zero to free the descriptor
+    buffer[4*(descriptor_index%4)+2] = 0;
+    buffer[4*(descriptor_index%4)+3] = 0;
+    
+    ldisk->write_block(descriptor_index_to_descriptor_block(descriptor_index), (char *)buffer);
+    
+    //free bitmap
+    for(int i=0; i<3; i++){
+        if(block_list[i] != 0 && block_list[i]!= -1)
+            free_block_bitmap(ldisk, mask2, block_list[i]);
+    }
+    
+    status = 1;
+    
+    return status;
 }
 
 int open_file(Ldisk *ldisk, Directory* dir, OpenFileTable* ofts,char* file_name){
@@ -390,6 +449,10 @@ int write_file(char content, int count, int descriptor_index,Ldisk *ldisk, OpenF
                     int new_block_index = allocate_new_data_block(ldisk, mask, ofts->index);
                     ldisk->read_block(new_block_index, ofts->rw_buffer);
                     buffer_position = 0;
+                }else{
+                    data_block_index = get_data_block_index(ldisk, ofts->index, (ofts->position/64+1));
+                    ldisk->read_block(data_block_index, ofts->rw_buffer);
+                    buffer_position = 0;
                 }
             }
             
@@ -420,6 +483,45 @@ int write_file(char content, int count, int descriptor_index,Ldisk *ldisk, OpenF
         }
         
         
+    }
+    
+    return status;
+}
+
+int read_file(int descriptor_index, int count, Ldisk *ldisk, OpenFileTable *ofts, char *read_buffer){
+    int status = -1;
+    int progress = 0;
+    int old_position = ofts->position;
+    
+    
+    if(progress < count){
+        int buffer_position = position_to_buffer_position(ofts->position);
+        for(int i=0; i<count; i++){
+            
+            //fetch next block
+            if(buffer_position >=64){
+                int data_block_index = get_data_block_index(ldisk, ofts->index, (ofts->position-1)/64+1);
+                ldisk->write_block(data_block_index, ofts->rw_buffer);
+                if(get_data_block_index(ldisk, ofts->index, ofts->position/64+1) == 0)
+                    return progress;
+                else{
+                    data_block_index = get_data_block_index(ldisk, ofts->index, ofts->position/64+1);
+                    ldisk->read_block(data_block_index, ofts->rw_buffer);
+                    buffer_position = 0;
+                }
+            }
+            
+            read_buffer[progress] = ofts->rw_buffer[buffer_position];
+            buffer_position++;
+            progress++;
+            
+            if(ofts->position != 191)
+                ofts->position++;
+            
+            if(progress == count){
+                return progress;
+            }
+        }
     }
     
     return status;
@@ -490,7 +592,7 @@ int main(int argc, const char * argv[]) {
     
     create_file(name1, &test_ldisk, &test_dir, ofts);
 
-    std::cout << "Return from openfile: " << open_file(&test_ldisk, &test_dir, ofts, test) << std::endl;
+    open_file(&test_ldisk, &test_dir, ofts, test);
     
     find_zero_bitmap(&test_ldisk, mask);
     
@@ -502,12 +604,27 @@ int main(int argc, const char * argv[]) {
     
     open_file(&test_ldisk, &test_dir, ofts, "qwe");
     
-    close_file(&test_ldisk, &ofts[2]);
+    //close_file(&test_ldisk, &ofts[2]);
     
     //get_data_block_index(&test_ldisk, 0, 2);
     
     write_file('x', 50, ofts[1].index, &test_ldisk, &ofts[1], mask);
-    write_file('y',140,ofts[1].index,&test_ldisk,&ofts[1], mask);
+    write_file('y',40,ofts[1].index,&test_ldisk,&ofts[1], mask);
+    
+    
+    char read_buffer[192];
+    seek_position(&test_ldisk, &ofts[1], 45);
+    write_file('a', 30, ofts[1].index, &test_ldisk, &ofts[1], mask);
+    seek_position(&test_ldisk, &ofts[1], 40);
+    read_file(ofts[1].index, 50 , &test_ldisk, &ofts[1], read_buffer);
+    
+    write_file('a', 5, ofts[2].index, &test_ldisk, &ofts[2], mask);
+    write_file('k',100,ofts[1].index,&test_ldisk,&ofts[1], mask);
+    
+    
+    
+    destory_file("qwe",&test_ldisk,&test_dir,&ofts[0],mask2);
+    std::cout << find_zero_bitmap(&test_ldisk, mask) << std::endl;
     
     return 0;
 }
