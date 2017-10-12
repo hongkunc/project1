@@ -9,6 +9,8 @@
 #include <fstream>
 #include <iostream>
 #include <cstring>
+#include <string>
+#include <sstream>
 #include "Ldisk.hpp"
 #include "Directory.hpp"
 #include "OFT.hpp"
@@ -204,6 +206,26 @@ int get_data_block_index(Ldisk *ldisk, int descriptor_index, int which_block){
 int create_file(char *name, Ldisk *ldisk, Directory* dir, OpenFileTable* ofts){
     //If file already exists or the directory if full return -1, else return the index of file
     
+    int block_list[3];
+    int temp[16];
+    ldisk->read_block(1, (char *)temp);
+    for(int i=0; i<3; i++){
+        block_list[i] = temp[i+1];
+    }
+    
+    //if file exist, return -1, error
+    for(int i=0; i<3; i++){
+        if(block_list[i] != 0){
+            ldisk->read_block(block_list[i], ofts[0].rw_buffer);
+            dir->get_dir_from_ofts(ofts[0].rw_buffer);
+            
+            int dir_index = dir->find_file(name);
+            if(dir_index != -1)
+                return -1;
+        }
+    }
+    
+    
     //Find free descriptor
     int index = -1;
     
@@ -217,14 +239,8 @@ int create_file(char *name, Ldisk *ldisk, Directory* dir, OpenFileTable* ofts){
         set_descriptor(ldisk, index, -1); //-1 means this descriptor is occupied
     }
     
-    // Find free dirctory entry
-    int block_list[3];
-    int temp[16];
-    ldisk->read_block(1, (char *)temp);
-    for(int i=0; i<3; i++){
-        block_list[i] = temp[i+1];
-    }
     
+    // Find free dirctory entry
     for(int i=0; i<3; i++){
         if(block_list[i] != 0){
             ldisk->read_block(block_list[i], ofts[0].rw_buffer);
@@ -325,6 +341,9 @@ int open_file(Ldisk *ldisk, Directory* dir, OpenFileTable* ofts,char* file_name)
             }
         }
     }
+    
+    if(descriptor_index == -1)
+        return -1;
     
     //find free oft slot
     int oft_index = -1;
@@ -561,6 +580,103 @@ int main(int argc, const char * argv[]) {
         mask2[i] = ~mask[i];
     }
     
+    //ldisk and directory
+    Ldisk tldisk;
+    Directory tdir;
+    
+    //output file
+    std::ofstream output_file;
+    output_file.open("output.txt");
+    
+    //read input file
+    std::string line;
+    std::ifstream input_file;
+    
+    input_file.open("input.txt");
+    while(std::getline(input_file, line)){
+        std::cout << line << std::endl;
+        std::istringstream iss(line);
+        std::string word[4];
+        for(int i=0; i<4 && iss; i++){
+            iss >> word[i];
+            
+        }
+        
+        if(word[0] == "in"){
+            std::cout << "COMMAND: in" << std::endl;
+            initial_ldisk(&tldisk, mask);
+        }
+        if(word[0] == "cr"){
+            std::cout << "COMMAND: cr" << std::endl;
+            char *cstr = &word[1][0];
+            int descriptor_index = create_file(cstr, &tldisk , &tdir, ofts);
+            
+            if(descriptor_index == -1)
+                output_file << "error\n";
+            else{
+                output_file << word[1];
+                output_file << " created\n";
+            }
+        }
+        if(word[0] == "de"){
+            std::cout << "COMMAND: de" << std::endl;
+        }
+        if(word[0] == "op"){
+            std::cout << "COMMAND: op" << std::endl;
+            char *cstr = &word[1][0];
+            int oft_index = open_file(&tldisk, &tdir, ofts, cstr);
+            
+            if(oft_index == -1)
+                output_file << "error\n";
+            else{
+                output_file << word[1];
+                output_file << " opened ";
+                output_file << oft_index << std::endl;
+                
+            }
+            
+        }
+        if(word[0] == "cl"){
+            std::cout << "COMMAND: cl" << std::endl;
+        }
+        if(word[0] == "rd"){
+            std::cout << "COMMAND: rd" << std::endl;
+        }
+        if(word[0] == "wr"){
+            std::cout << "COMMAND: wr" << std::endl;
+            int index = std::stoi(word[1]);
+            int count = std::stoi(word[3]);
+            
+            if(index > 3 || count <0)
+                output_file << "error\n";
+            else{
+                char *cstr = &word[2][0];
+                int a_count = write_file(cstr[0], count, ofts[index].index, &tldisk, &ofts[index], mask);
+                output_file << a_count;
+                output_file << " bytes written\n";
+            }
+            
+            
+        }
+        if(word[0] == "dr"){
+            std::cout << "COMMAND: dr" << std::endl;
+        }
+        if(word[0] == "sk"){
+            std::cout << "COMMAND: sk" << std::endl;
+        }
+        if(word[0] == "sv"){
+            std::cout << "COMMAND: sv" << std::endl;
+        }
+        if(word[0] == ""){
+            std::cout << "BLANK" << std::endl;
+        }
+    }
+    
+    
+   
+    output_file.close();
+    input_file.close();
+    
     
     
     
@@ -581,50 +697,67 @@ int main(int argc, const char * argv[]) {
     
 
     initial_ldisk(&test_ldisk, mask);
-    int tbuffer[16];
-    test_ldisk.read_block(1, (char *)tbuffer);
     
-    create_file("qwe", &test_ldisk, &test_dir, ofts);
-
-   
+    create_file("foo", &test_ldisk, &test_dir, ofts);
+    open_file(&test_ldisk, &test_dir, ofts, "foo");
+    write_file('x', 60, ofts[1].index, &test_ldisk, &ofts[1], mask);
+    write_file('y', 10, ofts[1].index, &test_ldisk, &ofts[1], mask);
+    seek_position(&test_ldisk, &ofts[1], 55);
+    char buffer[192];
+    memset(buffer, 0, sizeof(buffer));
+    read_file(1, 10, &test_ldisk, &ofts[1], buffer);
+    std::cout << buffer << std::endl;
+    print_directory(&test_ldisk, &test_dir);
+    test_ldisk.write_to_file("dsk.txt");
+    test_ldisk.restore_ldisk("dsk.txt");
     
-    create_file(test, &test_ldisk, &test_dir, ofts);
-    
-    create_file(name1, &test_ldisk, &test_dir, ofts);
-
-    open_file(&test_ldisk, &test_dir, ofts, test);
-    
-    find_zero_bitmap(&test_ldisk, mask);
-    
-    print_directory(&test_ldisk,&test_dir);
-    
-    std::cout << 63/64 << std::endl;
-    
-    seek_position(&test_ldisk, &ofts[0], 16);
-    
-    open_file(&test_ldisk, &test_dir, ofts, "qwe");
-    
-    //close_file(&test_ldisk, &ofts[2]);
-    
-    //get_data_block_index(&test_ldisk, 0, 2);
-    
-    write_file('x', 50, ofts[1].index, &test_ldisk, &ofts[1], mask);
-    write_file('y',40,ofts[1].index,&test_ldisk,&ofts[1], mask);
+    //std::cout << create_file("foo", &test_ldisk, &test_dir, ofts) << std::endl;
     
     
-    char read_buffer[192];
-    seek_position(&test_ldisk, &ofts[1], 45);
-    write_file('a', 30, ofts[1].index, &test_ldisk, &ofts[1], mask);
-    seek_position(&test_ldisk, &ofts[1], 40);
-    read_file(ofts[1].index, 50 , &test_ldisk, &ofts[1], read_buffer);
-    
-    write_file('a', 5, ofts[2].index, &test_ldisk, &ofts[2], mask);
-    write_file('k',100,ofts[1].index,&test_ldisk,&ofts[1], mask);
-    
-    
-    
-    destory_file("qwe",&test_ldisk,&test_dir,&ofts[0],mask2);
-    std::cout << find_zero_bitmap(&test_ldisk, mask) << std::endl;
+//    int tbuffer[16];
+//    test_ldisk.read_block(1, (char *)tbuffer);
+//    
+//    create_file("qwe", &test_ldisk, &test_dir, ofts);
+//
+//   
+//    
+//    create_file(test, &test_ldisk, &test_dir, ofts);
+//    
+//    create_file(name1, &test_ldisk, &test_dir, ofts);
+//
+//    open_file(&test_ldisk, &test_dir, ofts, test);
+//    
+//    find_zero_bitmap(&test_ldisk, mask);
+//    
+//    print_directory(&test_ldisk,&test_dir);
+//    
+//    std::cout << 63/64 << std::endl;
+//    
+//    seek_position(&test_ldisk, &ofts[0], 16);
+//    
+//    open_file(&test_ldisk, &test_dir, ofts, "qwe");
+//    
+//    //close_file(&test_ldisk, &ofts[2]);
+//    
+//    //get_data_block_index(&test_ldisk, 0, 2);
+//    
+//    write_file('x', 50, ofts[1].index, &test_ldisk, &ofts[1], mask);
+//    write_file('y',40,ofts[1].index,&test_ldisk,&ofts[1], mask);
+//    
+//    
+//    char read_buffer[192];
+//    seek_position(&test_ldisk, &ofts[1], 45);
+//    write_file('a', 30, ofts[1].index, &test_ldisk, &ofts[1], mask);
+//    seek_position(&test_ldisk, &ofts[1], 40);
+//    read_file(ofts[1].index, 50 , &test_ldisk, &ofts[1], read_buffer);
+//    
+//    write_file('a', 5, ofts[2].index, &test_ldisk, &ofts[2], mask);
+//    write_file('k',100,ofts[1].index,&test_ldisk,&ofts[1], mask);
+//    
+//    
+//    
+//    destory_file("qwe",&test_ldisk,&test_dir,&ofts[0],mask2);
+//    std::cout << find_zero_bitmap(&test_ldisk, mask) << std::endl;
     
     return 0;
 }
