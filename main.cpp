@@ -147,6 +147,12 @@ void initial_ldisk(Ldisk* ldisk,long long int* mask){
 void initial_ofts(Ldisk* ldisk, OpenFileTable* oft){
     //Initial open file table
     //The first slot is reserved for directory
+    for(int i=0; i<4; i++){
+        oft[i].set_index(-1);
+        memset(oft[i].rw_buffer, 0, sizeof(oft[i].rw_buffer));
+        oft[i].set_position(0);
+        oft[i].set_length(0);
+    }
     oft[0].set_index(0);
     oft[0].set_position(0);
     oft[0].set_length(0);
@@ -283,6 +289,7 @@ int destory_file(char *name, Ldisk *ldisk, Directory *dir, OpenFileTable *ofts, 
                 std::cout << "Find file in directory" << std::endl;
                 descriptor_index = dir->directory[2*dir_index+1];
                 dir->directory[2*dir_index+1] = 0;
+                dir->directory[2*dir_index] = 0;
                 memcpy(ofts->rw_buffer, dir->directory, sizeof(dir->directory));
                 ldisk->write_block(block_list[i], ofts->rw_buffer);
                 break;
@@ -294,6 +301,7 @@ int destory_file(char *name, Ldisk *ldisk, Directory *dir, OpenFileTable *ofts, 
     if(descriptor_index == -1)
         return -1;
     
+    status = descriptor_index;
     for(int i=0; i<3; i++)
         block_list[i] = get_data_block_index(ldisk, descriptor_index, i+1);
     
@@ -305,6 +313,7 @@ int destory_file(char *name, Ldisk *ldisk, Directory *dir, OpenFileTable *ofts, 
     buffer[4*(descriptor_index%4)+2] = 0;
     buffer[4*(descriptor_index%4)+3] = 0;
     
+    
     ldisk->write_block(descriptor_index_to_descriptor_block(descriptor_index), (char *)buffer);
     
     //free bitmap
@@ -313,7 +322,6 @@ int destory_file(char *name, Ldisk *ldisk, Directory *dir, OpenFileTable *ofts, 
             free_block_bitmap(ldisk, mask2, block_list[i]);
     }
     
-    status = 1;
     
     return status;
 }
@@ -344,6 +352,14 @@ int open_file(Ldisk *ldisk, Directory* dir, OpenFileTable* ofts,char* file_name)
     
     if(descriptor_index == -1)
         return -1;
+    
+    //check if already opened
+    //haven't tested
+    for(int i=1; i<4; i++){
+        if(ofts[i].index == descriptor_index){
+            return -1;
+        }
+    }
     
     //find free oft slot
     int oft_index = -1;
@@ -396,11 +412,15 @@ int close_file(Ldisk *ldisk, OpenFileTable* ofts){
     change_descriptor_length(ldisk, ofts->index, ofts->length);
     
     ofts->set_index(-1);
+    ofts->set_position(0);
+    ofts->set_length(0);
+    memset(ofts->rw_buffer, 0, sizeof(ofts->rw_buffer));
+    status = 1;
     
     return status;
 }
 
-void print_directory(Ldisk *ldisk,Directory *dir){
+void print_directory(Ldisk *ldisk,Directory *dir,std::ofstream &output_file){
     int block_list[3];
     int temp[16];
     
@@ -412,7 +432,7 @@ void print_directory(Ldisk *ldisk,Directory *dir){
         if(block_list[i] != 0){
             ldisk->read_block(block_list[i], (char *)temp);
             dir->get_dir_from_ofts((char *)temp);
-            dir->print_all_file();
+            dir->print_all_file(output_file);
         }
     }
 }
@@ -605,6 +625,14 @@ int main(int argc, const char * argv[]) {
         if(word[0] == "in"){
             std::cout << "COMMAND: in" << std::endl;
             initial_ldisk(&tldisk, mask);
+            initial_ofts(&tldisk, ofts);
+            
+            char* cstr = &word[1][0];
+            int status = tldisk.restore_ldisk(cstr);
+            if(status == -1)
+                output_file << "disk initialized\n";
+            else
+                output_file << "disk restored\n";
         }
         if(word[0] == "cr"){
             std::cout << "COMMAND: cr" << std::endl;
@@ -620,6 +648,21 @@ int main(int argc, const char * argv[]) {
         }
         if(word[0] == "de"){
             std::cout << "COMMAND: de" << std::endl;
+            char *cstr = &word[1][0];
+            
+            int status = destory_file(cstr, &tldisk, &tdir, &ofts[0], mask2);
+            //if file is opened, close the file first
+            if(status != -1){
+                for(int i=1; i<4; i++){
+                    if(ofts[i].index == status)
+                        close_file(&tldisk, &ofts[i]);
+                }
+            }
+            
+            if(status == -1)
+                output_file << "error\n";
+            else
+                output_file << cstr << " destroyed\n";
         }
         if(word[0] == "op"){
             std::cout << "COMMAND: op" << std::endl;
@@ -638,9 +681,32 @@ int main(int argc, const char * argv[]) {
         }
         if(word[0] == "cl"){
             std::cout << "COMMAND: cl" << std::endl;
+            int index = std::stoi(word[1]);
+            
+            if(ofts[index].index == -1)
+                output_file << "error\n";
+            else{
+                close_file(&tldisk, &ofts[index]);
+                output_file << index << " closed\n";
+            }
+            
         }
         if(word[0] == "rd"){
             std::cout << "COMMAND: rd" << std::endl;
+            char r_buffer[192];
+            memset(r_buffer, 0, sizeof(r_buffer));
+            int index = std::stoi(word[1]);
+            int count = std::stoi(word[2]);
+            
+            if(index > 3 || count<0)
+                output_file << "error\n";
+            if(ofts[index].index == -1)
+                output_file << "error\n";
+            else{
+                int a_count  = read_file(ofts[index].index, count, &tldisk, &ofts[index], r_buffer);
+                output_file << r_buffer;
+                output_file << '\n';
+            }
         }
         if(word[0] == "wr"){
             std::cout << "COMMAND: wr" << std::endl;
@@ -648,6 +714,8 @@ int main(int argc, const char * argv[]) {
             int count = std::stoi(word[3]);
             
             if(index > 3 || count <0)
+                output_file << "error\n";
+            if(ofts[index].index == -1)
                 output_file << "error\n";
             else{
                 char *cstr = &word[2][0];
@@ -660,15 +728,35 @@ int main(int argc, const char * argv[]) {
         }
         if(word[0] == "dr"){
             std::cout << "COMMAND: dr" << std::endl;
+            print_directory(&tldisk, &tdir,output_file);
+            output_file << '\n';
         }
         if(word[0] == "sk"){
             std::cout << "COMMAND: sk" << std::endl;
+            int index = std::stoi(word[1]);
+            int pos = std::stoi(word[2]);
+            
+            if(index >3 || pos<0 || pos>191)
+                output_file << "error\n";
+            else{
+                int status = seek_position(&tldisk, &ofts[index], pos);
+                if(status == -1)
+                    output_file << "error\n";
+                else
+                    output_file << "position is " << pos << "\n";
+            }
         }
         if(word[0] == "sv"){
             std::cout << "COMMAND: sv" << std::endl;
+            char *cstr = &word[1][0];
+            
+            tldisk.write_to_file(cstr);
+            output_file << "disk saved\n";
+            
         }
         if(word[0] == ""){
-            std::cout << "BLANK" << std::endl;
+            std::cout << "\n" << std::endl;
+            output_file << "\n";
         }
     }
     
@@ -707,7 +795,8 @@ int main(int argc, const char * argv[]) {
     memset(buffer, 0, sizeof(buffer));
     read_file(1, 10, &test_ldisk, &ofts[1], buffer);
     std::cout << buffer << std::endl;
-    print_directory(&test_ldisk, &test_dir);
+    //print_directory(&test_ldisk, &test_dir);
+    destory_file("foo", &test_ldisk, &test_dir, &ofts[0], mask2);
     test_ldisk.write_to_file("dsk.txt");
     test_ldisk.restore_ldisk("dsk.txt");
     
