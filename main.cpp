@@ -127,6 +127,7 @@ void initial_ldisk(Ldisk* ldisk,long long int* mask){
     //initial bitmap
     int buffer[16];
     long long int bitmap[1];
+    memset(ldisk->ldisk, 0, sizeof(ldisk->ldisk));
     ldisk->read_block(0, (char *)buffer);
     memcpy(bitmap, buffer, sizeof(bitmap));
     for(int i=0; i<7;i++){
@@ -400,6 +401,9 @@ int open_file(Ldisk *ldisk, Directory* dir, OpenFileTable* ofts,char* file_name)
 int close_file(Ldisk *ldisk, OpenFileTable* ofts){
     int status = -1;
     
+    if(ofts->index == -1)
+        return status;
+    
     int temp[16];
     ldisk->read_block(1+(ofts->index)/4, (char *)temp);
     
@@ -440,8 +444,12 @@ void print_directory(Ldisk *ldisk,Directory *dir,std::ofstream &output_file){
 int seek_position(Ldisk *ldisk, OpenFileTable *ofts, int new_position){
     int status = -1;
     
+    if(ofts->index == -1)
+        return status;
+    
     if(new_position > ofts->length)
         return status;
+    
     
     
     int block_list[3];
@@ -455,6 +463,9 @@ int seek_position(Ldisk *ldisk, OpenFileTable *ofts, int new_position){
         ldisk->read_block(block_list[new_position/64], ofts->rw_buffer);
         ofts->set_position(new_position);
         status = 1;
+    }else{
+        ofts->set_position(new_position);
+        status=1;
     }
     
     return status;
@@ -464,6 +475,10 @@ int write_file(char content, int count, int descriptor_index,Ldisk *ldisk, OpenF
     int status = -1;
     int progress = 0;
     int old_position = ofts->position;
+    
+    //check if the file is opened
+    if(ofts->index == -1)
+        return status;
     
     //check if exceed the max length
     if(count+old_position > 64*3){
@@ -532,6 +547,13 @@ int read_file(int descriptor_index, int count, Ldisk *ldisk, OpenFileTable *ofts
     int progress = 0;
     int old_position = ofts->position;
     
+    //check if file is opened
+    if(ofts->index == -1)
+        return status;
+    
+    if(count+old_position>ofts->length){
+        count = ofts->length - old_position;
+    }
     
     if(progress < count){
         int buffer_position = position_to_buffer_position(ofts->position);
@@ -612,7 +634,7 @@ int main(int argc, const char * argv[]) {
     std::string line;
     std::ifstream input_file;
     
-    input_file.open("input.txt");
+    input_file.open("input2.txt");
     while(std::getline(input_file, line)){
         std::cout << line << std::endl;
         std::istringstream iss(line);
@@ -704,7 +726,8 @@ int main(int argc, const char * argv[]) {
                 output_file << "error\n";
             else{
                 int a_count  = read_file(ofts[index].index, count, &tldisk, &ofts[index], r_buffer);
-                output_file << r_buffer;
+                //output_file << r_buffer;
+                output_file.write(r_buffer, sizeof(r_buffer));
                 output_file << '\n';
             }
         }
