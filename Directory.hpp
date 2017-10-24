@@ -33,7 +33,7 @@ public:
     //Print file name and descriptor index
     void print_file_name(int position);
     void print_file_descriptor_index(int position);
-    void print_all_file();
+    void print_all_file(std::ofstream &output_file);
     
     //Helper function
     int find_file(char* name);    //if file exist return the index, else return -1
@@ -75,12 +75,13 @@ void Directory::print_file_name(int position){
      std::cout << "File name: " <<reinterpret_cast<char*>(&this->directory[2*position+0]) << std::endl;
 }
 
-void Directory::print_all_file(){
+void Directory::print_all_file(std::ofstream &output_file){
     char temp[5];
     for(int i=0; i<8; i++){
         return_file_name(reinterpret_cast<char*>(&this->directory[2*i+0]), temp, sizeof(temp));
         if(temp[0] != '\0')
             std::cout << temp << " ";
+            output_file << temp << " ";
     }
 }
 

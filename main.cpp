@@ -628,7 +628,7 @@ int main(int argc, const char * argv[]) {
     
     //output file
     std::ofstream output_file;
-    output_file.open("output.txt");
+    output_file.open("62214504.txt");
     
     //read input file
     std::string line;
@@ -791,85 +791,7 @@ int main(int argc, const char * argv[]) {
     
     
     
-    
 
-    char test[5] = "abc";
-    char name1[5] = "efg";
-    
-    
-    
-    Ldisk test_ldisk;
-    test_ldisk.print_info();
-    
-    //test_ldisk.write_block(7, name1);
-    
-    Directory test_dir;
-    
-    
 
-    initial_ldisk(&test_ldisk, mask);
-    
-    create_file("foo", &test_ldisk, &test_dir, ofts);
-    open_file(&test_ldisk, &test_dir, ofts, "foo");
-    write_file('x', 60, ofts[1].index, &test_ldisk, &ofts[1], mask);
-    write_file('y', 10, ofts[1].index, &test_ldisk, &ofts[1], mask);
-    seek_position(&test_ldisk, &ofts[1], 55);
-    char buffer[192];
-    memset(buffer, 0, sizeof(buffer));
-    read_file(1, 10, &test_ldisk, &ofts[1], buffer);
-    std::cout << buffer << std::endl;
-    //print_directory(&test_ldisk, &test_dir);
-    destory_file("foo", &test_ldisk, &test_dir, &ofts[0], mask2);
-    test_ldisk.write_to_file("dsk.txt");
-    test_ldisk.restore_ldisk("dsk.txt");
-    
-    //std::cout << create_file("foo", &test_ldisk, &test_dir, ofts) << std::endl;
-    
-    
-//    int tbuffer[16];
-//    test_ldisk.read_block(1, (char *)tbuffer);
-//    
-//    create_file("qwe", &test_ldisk, &test_dir, ofts);
-//
-//   
-//    
-//    create_file(test, &test_ldisk, &test_dir, ofts);
-//    
-//    create_file(name1, &test_ldisk, &test_dir, ofts);
-//
-//    open_file(&test_ldisk, &test_dir, ofts, test);
-//    
-//    find_zero_bitmap(&test_ldisk, mask);
-//    
-//    print_directory(&test_ldisk,&test_dir);
-//    
-//    std::cout << 63/64 << std::endl;
-//    
-//    seek_position(&test_ldisk, &ofts[0], 16);
-//    
-//    open_file(&test_ldisk, &test_dir, ofts, "qwe");
-//    
-//    //close_file(&test_ldisk, &ofts[2]);
-//    
-//    //get_data_block_index(&test_ldisk, 0, 2);
-//    
-//    write_file('x', 50, ofts[1].index, &test_ldisk, &ofts[1], mask);
-//    write_file('y',40,ofts[1].index,&test_ldisk,&ofts[1], mask);
-//    
-//    
-//    char read_buffer[192];
-//    seek_position(&test_ldisk, &ofts[1], 45);
-//    write_file('a', 30, ofts[1].index, &test_ldisk, &ofts[1], mask);
-//    seek_position(&test_ldisk, &ofts[1], 40);
-//    read_file(ofts[1].index, 50 , &test_ldisk, &ofts[1], read_buffer);
-//    
-//    write_file('a', 5, ofts[2].index, &test_ldisk, &ofts[2], mask);
-//    write_file('k',100,ofts[1].index,&test_ldisk,&ofts[1], mask);
-//    
-//    
-//    
-//    destory_file("qwe",&test_ldisk,&test_dir,&ofts[0],mask2);
-//    std::cout << find_zero_bitmap(&test_ldisk, mask) << std::endl;
-    
     return 0;
 }
